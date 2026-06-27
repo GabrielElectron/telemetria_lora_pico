@@ -195,21 +195,18 @@ void loop() {
   int state = radio.receive(mensaje);
 
   if (state == RADIOLIB_ERR_NONE) {
-    Serial.println("--------------------------------------");
-    Serial.print("Paquete recibido: ");
-    Serial.println(mensaje);
+    float rssi = radio.getRSSI();
+float snr = radio.getSNR();
+float ferr = radio.getFrequencyError();
 
-    Serial.print("RSSI: ");
-    Serial.print(radio.getRSSI());
-    Serial.println(" dBm");
-
-    Serial.print("SNR: ");
-    Serial.print(radio.getSNR());
-    Serial.println(" dB");
-
-    Serial.print("Frequency error: ");
-    Serial.print(radio.getFrequencyError());
-    Serial.println(" Hz");
+  Serial.print("RX;");
+  Serial.print(mensaje);
+  Serial.print(";RSSI=");
+  Serial.print(rssi, 2);
+  Serial.print(";SNR=");
+  Serial.print(snr, 2);
+  Serial.print(";FERR=");
+  Serial.println(ferr, 2);
   }
   else if (state == RADIOLIB_ERR_RX_TIMEOUT) {
     // Es normal, no llego ningun paquete.
