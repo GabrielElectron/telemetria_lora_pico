@@ -36,6 +36,9 @@ SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY, SPI1);
 
 int contador = 0;
 
+unsigned long ultimo_envio_ms = 0;
+const unsigned long PERIODO_ENVIO_MS = 2000;
+
 // ======================================================
 // Inicializacion comun del SX1262
 // ======================================================
@@ -104,6 +107,19 @@ void setup() {
 
   iniciar_lora();
 
+#ifdef DEVICE_MODE_TX
+  // Desfase inicial entre nodos:
+  // Nodo 1 transmite casi inmediatamente.
+  // Nodo 2 espera aproximadamente 1 segundo.
+  if (NODE_ID == 1) {
+    ultimo_envio_ms = millis() - PERIODO_ENVIO_MS;
+  } else if (NODE_ID == 2) {
+    ultimo_envio_ms = millis() - PERIODO_ENVIO_MS + 1000;
+  } else {
+    ultimo_envio_ms = millis();
+  }
+#endif
+
 #ifdef DEVICE_MODE_GATEWAY
   Serial.println();
   Serial.println("Esperando paquetes LoRa...");
@@ -117,44 +133,49 @@ void loop() {
 
 #ifdef DEVICE_MODE_TX
 
-  float vrms;
-  float irms;
+  unsigned long ahora_ms = millis();
 
-  if (NODE_ID == 1) {
-    vrms = 220.5;
-    irms = 3.25;
-  } else if (NODE_ID == 2) {
-    vrms = 219.8;
-    irms = 1.80;
-  } else {
-    vrms = 0.0;
-    irms = 0.0;
+  if (ahora_ms - ultimo_envio_ms >= PERIODO_ENVIO_MS) {
+    ultimo_envio_ms = ahora_ms;
+
+    float vrms;
+    float irms;
+
+    if (NODE_ID == 1) {
+      vrms = 220.5;
+      irms = 3.25;
+    } else if (NODE_ID == 2) {
+      vrms = 219.8;
+      irms = 1.80;
+    } else {
+      vrms = 0.0;
+      irms = 0.0;
+    }
+
+    float potencia = vrms * irms;
+
+    String mensaje = "";
+    mensaje += "NODE=" + String(NODE_ID);
+    mensaje += ";SEQ=" + String(contador);
+    mensaje += ";VRMS=" + String(vrms, 2);
+    mensaje += ";IRMS=" + String(irms, 2);
+    mensaje += ";P=" + String(potencia, 2);
+    mensaje += ";STATUS=OK";
+
+    Serial.print("Transmitiendo: ");
+    Serial.println(mensaje);
+
+    int state = radio.transmit(mensaje);
+
+    if (state == RADIOLIB_ERR_NONE) {
+      Serial.println("Envio OK");
+    } else {
+      Serial.print("Error enviando. Codigo: ");
+      Serial.println(state);
+    }
+
+    contador++;
   }
-
-  float potencia = vrms * irms;
-
-  String mensaje = "";
-  mensaje += "Nodo=" + String(NODE_ID);
-  mensaje += "; contador=" + String(contador);
-  mensaje += "; Vrms=" + String(vrms, 2);
-  mensaje += "; Irms=" + String(irms, 2);
-  mensaje += "; P=" + String(potencia, 2);
-  mensaje += "; Estado=OK";
-
-  Serial.print("Transmitiendo: ");
-  Serial.println(mensaje);
-
-  int state = radio.transmit(mensaje);
-
-  if (state == RADIOLIB_ERR_NONE) {
-    Serial.println("Envio OK");
-  } else {
-    Serial.print("Error enviando. Codigo: ");
-    Serial.println(state);
-  }
-
-  contador++;
-  delay(2000);
 
 #endif
 
@@ -192,5 +213,4 @@ void loop() {
   }
 
 #endif
-
 }
