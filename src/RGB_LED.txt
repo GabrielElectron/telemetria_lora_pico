@@ -1,0 +1,456 @@
+#include <Arduino.h>
+
+// ===================== CONFIGURACIÓN =====================
+
+const int BRILLO_MAX = 255;   // 100%
+const int PIN_BOTON = 27;     // Botón entre GP27 y GND
+
+const int CANT_LEDS = 8;
+const int CANT_MODOS = 10;
+
+const unsigned long DURACION_MODO_MS = 60000; // 60 segundos por modo
+
+// Pines físicos de los 8 LEDs RGB
+// Como algunos tienen RGB mezclado, lo dejamos así para efecto fiesta.
+const int leds[CANT_LEDS][3] = {
+  {0,  1,  2},    // LED 1
+  {3,  4,  5},    // LED 2
+  {6,  7,  8},    // LED 3
+  {9,  10, 11},   // LED 4
+  {12, 13, 14},   // LED 5
+  {15, 16, 17},   // LED 6
+  {18, 19, 20},   // LED 7
+  {21, 22, 26}    // LED 8
+};
+
+int modoActual = 0;
+
+// Antirrebote del botón
+bool estadoAnteriorBoton = HIGH;
+unsigned long ultimoCambioBoton = 0;
+const unsigned long DEBOUNCE_MS = 200;
+
+// Tiempo de modo
+unsigned long inicioModo = 0;
+
+// Variables para animaciones
+unsigned long tAnterior = 0;
+int paso = 0;
+
+// Para modo fade suave
+int actual[CANT_LEDS][3];
+int objetivo[CANT_LEDS][3];
+
+// ===================== FUNCIONES BÁSICAS =====================
+
+void escribirCanal(int pin, int valor) {
+  valor = constrain(valor, 0, 255);
+  valor = map(valor, 0, 255, 0, BRILLO_MAX);
+  analogWrite(pin, valor);
+}
+
+void escribirLed(int led, int c1, int c2, int c3) {
+  escribirCanal(leds[led][0], c1);
+  escribirCanal(leds[led][1], c2);
+  escribirCanal(leds[led][2], c3);
+}
+
+void escribirTodos(int c1, int c2, int c3) {
+  for (int i = 0; i < CANT_LEDS; i++) {
+    escribirLed(i, c1, c2, c3);
+  }
+}
+
+void apagarTodos() {
+  escribirTodos(0, 0, 0);
+}
+
+void colorAleatorioFuerte(int &c1, int &c2, int &c3) {
+  int modo = random(0, 7);
+
+  switch (modo) {
+    case 0: c1 = 255; c2 = 0;   c3 = 0;   break;
+    case 1: c1 = 0;   c2 = 255; c3 = 0;   break;
+    case 2: c1 = 0;   c2 = 0;   c3 = 255; break;
+    case 3: c1 = 255; c2 = 255; c3 = 0;   break;
+    case 4: c1 = 0;   c2 = 255; c3 = 255; break;
+    case 5: c1 = 255; c2 = 0;   c3 = 255; break;
+    case 6: c1 = 255; c2 = 255; c3 = 255; break;
+  }
+}
+
+void colorWheel(byte pos, int &c1, int &c2, int &c3) {
+  if (pos < 85) {
+    c1 = 255 - pos * 3;
+    c2 = pos * 3;
+    c3 = 0;
+  } 
+  else if (pos < 170) {
+    pos -= 85;
+    c1 = 0;
+    c2 = 255 - pos * 3;
+    c3 = pos * 3;
+  } 
+  else {
+    pos -= 170;
+    c1 = pos * 3;
+    c2 = 0;
+    c3 = 255 - pos * 3;
+  }
+}
+
+void nuevoObjetivo(int led) {
+  objetivo[led][0] = random(0, 256);
+  objetivo[led][1] = random(0, 256);
+  objetivo[led][2] = random(0, 256);
+
+  int canalApagado = random(0, 4);
+  if (canalApagado < 3) {
+    objetivo[led][canalApagado] = 0;
+  }
+}
+
+// ===================== CAMBIO DE MODO =====================
+
+void cambiarModo() {
+  modoActual++;
+
+  if (modoActual >= CANT_MODOS) {
+    modoActual = 0;
+  }
+
+  paso = 0;
+  tAnterior = millis();
+  inicioModo = millis();
+
+  apagarTodos();
+
+  for (int i = 0; i < CANT_LEDS; i++) {
+    for (int c = 0; c < 3; c++) {
+      actual[i][c] = 0;
+    }
+    nuevoObjetivo(i);
+  }
+
+  Serial.print("Modo actual: ");
+  Serial.println(modoActual);
+}
+
+void revisarCambioAutomatico() {
+  if (millis() - inicioModo >= DURACION_MODO_MS) {
+    cambiarModo();
+  }
+}
+
+// ===================== BOTÓN =====================
+
+void revisarBoton() {
+  bool estadoBoton = digitalRead(PIN_BOTON);
+
+  if (estadoBoton == LOW && estadoAnteriorBoton == HIGH) {
+    unsigned long ahora = millis();
+
+    if (ahora - ultimoCambioBoton > DEBOUNCE_MS) {
+      cambiarModo();
+      ultimoCambioBoton = ahora;
+    }
+  }
+
+  estadoAnteriorBoton = estadoBoton;
+}
+
+// ===================== MODOS =====================
+
+// Modo 0: Fiesta rápida aleatoria
+void modoFiestaRapida() {
+  if (millis() - tAnterior >= 100) {
+    tAnterior = millis();
+
+    for (int i = 0; i < CANT_LEDS; i++) {
+      int c1, c2, c3;
+      colorAleatorioFuerte(c1, c2, c3);
+      escribirLed(i, c1, c2, c3);
+    }
+  }
+}
+
+// Modo 1: Fade suave aleatorio
+void modoFadeSuave() {
+  if (millis() - tAnterior >= 15) {
+    tAnterior = millis();
+
+    for (int i = 0; i < CANT_LEDS; i++) {
+      bool llego = true;
+
+      for (int c = 0; c < 3; c++) {
+        if (actual[i][c] < objetivo[i][c]) {
+          actual[i][c]++;
+          llego = false;
+        } 
+        else if (actual[i][c] > objetivo[i][c]) {
+          actual[i][c]--;
+          llego = false;
+        }
+      }
+
+      escribirLed(i, actual[i][0], actual[i][1], actual[i][2]);
+
+      if (llego) {
+        nuevoObjetivo(i);
+      }
+    }
+  }
+}
+
+// Modo 2: Barrido ida y vuelta
+void modoBarrido() {
+  if (millis() - tAnterior >= 80) {
+    tAnterior = millis();
+
+    apagarTodos();
+
+    int posicion;
+    int ciclo = paso % 14;
+
+    if (ciclo < 8) {
+      posicion = ciclo;
+    } else {
+      posicion = 14 - ciclo;
+    }
+
+    int c1, c2, c3;
+    colorAleatorioFuerte(c1, c2, c3);
+    escribirLed(posicion, c1, c2, c3);
+
+    paso++;
+  }
+}
+
+// Modo 3: Flash blanco tipo estrobo
+void modoFlashBlanco() {
+  if (millis() - tAnterior >= 70) {
+    tAnterior = millis();
+
+    if (paso % 2 == 0) {
+      escribirTodos(255, 255, 255);
+    } else {
+      apagarTodos();
+    }
+
+    paso++;
+  }
+}
+
+// Modo 4: Todos arcoíris sincronizados
+void modoArcoirisTodos() {
+  if (millis() - tAnterior >= 30) {
+    tAnterior = millis();
+
+    int c1, c2, c3;
+    colorWheel((byte)paso, c1, c2, c3);
+    escribirTodos(c1, c2, c3);
+
+    paso++;
+    if (paso >= 256) paso = 0;
+  }
+}
+
+// Modo 5: Respiración
+void modoRespiracion() {
+  if (millis() - tAnterior >= 15) {
+    tAnterior = millis();
+
+    int brillo;
+    int p = paso % 510;
+
+    if (p < 255) {
+      brillo = p;
+    } else {
+      brillo = 510 - p;
+    }
+
+    // Violeta/rosa respirando
+    escribirTodos(brillo, 0, brillo);
+
+    paso++;
+  }
+}
+
+// Modo 6: Policía rojo/azul
+void modoPolicia() {
+  if (millis() - tAnterior >= 120) {
+    tAnterior = millis();
+
+    if (paso % 2 == 0) {
+      for (int i = 0; i < CANT_LEDS; i++) {
+        if (i < 4) {
+          escribirLed(i, 255, 0, 0);
+        } else {
+          escribirLed(i, 0, 0, 255);
+        }
+      }
+    } else {
+      for (int i = 0; i < CANT_LEDS; i++) {
+        if (i < 4) {
+          escribirLed(i, 0, 0, 255);
+        } else {
+          escribirLed(i, 255, 0, 0);
+        }
+      }
+    }
+
+    paso++;
+  }
+}
+
+// Modo 7: Explosión aleatoria blanca/color
+void modoExplosion() {
+  if (millis() - tAnterior >= 90) {
+    tAnterior = millis();
+
+    for (int i = 0; i < CANT_LEDS; i++) {
+      int azar = random(0, 10);
+
+      if (azar < 2) {
+        escribirLed(i, 255, 255, 255);  // blanco fuerte
+      } 
+      else if (azar < 6) {
+        int c1, c2, c3;
+        colorAleatorioFuerte(c1, c2, c3);
+        escribirLed(i, c1, c2, c3);
+      } 
+      else {
+        escribirLed(i, 0, 0, 0);
+      }
+    }
+
+    paso++;
+  }
+}
+
+// Modo 8: Ola de colores
+void modoOlaColores() {
+  if (millis() - tAnterior >= 40) {
+    tAnterior = millis();
+
+    for (int i = 0; i < CANT_LEDS; i++) {
+      int c1, c2, c3;
+      byte pos = paso + i * 25;
+      colorWheel(pos, c1, c2, c3);
+      escribirLed(i, c1, c2, c3);
+    }
+
+    paso++;
+    if (paso >= 256) paso = 0;
+  }
+}
+
+// Modo 9: Fuego / lava
+void modoFuego() {
+  if (millis() - tAnterior >= 80) {
+    tAnterior = millis();
+
+    for (int i = 0; i < CANT_LEDS; i++) {
+      int intensidad = random(80, 256);
+
+      // Rojo fuerte, verde medio, azul apagado
+      int c1 = intensidad;
+      int c2 = random(0, intensidad / 2);
+      int c3 = 0;
+
+      escribirLed(i, c1, c2, c3);
+    }
+  }
+}
+
+// ===================== SETUP Y LOOP =====================
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  analogWriteRange(255);
+  analogWriteFreq(1000);
+
+  pinMode(PIN_BOTON, INPUT_PULLUP);
+
+  randomSeed(analogRead(28));
+
+  for (int i = 0; i < CANT_LEDS; i++) {
+    for (int c = 0; c < 3; c++) {
+      pinMode(leds[i][c], OUTPUT);
+      actual[i][c] = 0;
+      objetivo[i][c] = 0;
+    }
+
+    nuevoObjetivo(i);
+  }
+
+  apagarTodos();
+
+  inicioModo = millis();
+  tAnterior = millis();
+
+  Serial.println("Controlador RGB 8 LEDs iniciado");
+  Serial.println("Cada modo dura 60 segundos.");
+  Serial.println("Boton en GP27 contra GND para cambiar manualmente.");
+  Serial.println();
+  Serial.println("Modos:");
+  Serial.println("0 Fiesta rapida");
+  Serial.println("1 Fade suave");
+  Serial.println("2 Barrido");
+  Serial.println("3 Flash blanco");
+  Serial.println("4 Arcoiris todos");
+  Serial.println("5 Respiracion");
+  Serial.println("6 Policia rojo/azul");
+  Serial.println("7 Explosion");
+  Serial.println("8 Ola de colores");
+  Serial.println("9 Fuego/lava");
+}
+
+void loop() {
+  revisarBoton();
+  revisarCambioAutomatico();
+
+  switch (modoActual) {
+    case 0:
+      modoFiestaRapida();
+      break;
+
+    case 1:
+      modoFadeSuave();
+      break;
+
+    case 2:
+      modoBarrido();
+      break;
+
+    case 3:
+      modoFlashBlanco();
+      break;
+
+    case 4:
+      modoArcoirisTodos();
+      break;
+
+    case 5:
+      modoRespiracion();
+      break;
+
+    case 6:
+      modoPolicia();
+      break;
+
+    case 7:
+      modoExplosion();
+      break;
+
+    case 8:
+      modoOlaColores();
+      break;
+
+    case 9:
+      modoFuego();
+      break;
+  }
+}

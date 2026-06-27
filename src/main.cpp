@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <RadioLib.h>
 
-// Pines del modulo SX1262 para Raspberry Pi Pico
+// Pines del modulo SX1262 para Raspberry Pi Pico 2W
 #define LORA_BUSY   2
 #define LORA_CS     3
 #define LORA_SCK    10
@@ -25,10 +25,10 @@ void setup() {
 
   Serial.println();
   Serial.println("======================================");
-  Serial.println("PPS - Prueba Pico 2W + LoRa SX1262");
+  Serial.println("PPS - Nodo 1 Pico 2W + LoRa SX1262");
+  Serial.println("Modo: TRANSMISOR");
   Serial.println("======================================");
 
-  // Configuracion de pines SPI1
   SPI1.setSCK(LORA_SCK);
   SPI1.setTX(LORA_MOSI);
   SPI1.setRX(LORA_MISO);
@@ -49,8 +49,8 @@ void setup() {
   int state = radio.begin(
     915.0,   // frecuencia MHz
     125.0,   // bandwidth kHz
-    9,       // spreading factor
-    7,       // coding rate
+    7,       // spreading factor
+    5,       // coding rate 4/5
     0x12,    // sync word
     17,      // potencia dBm
     8        // preamble length
@@ -61,7 +61,8 @@ void setup() {
   } else {
     Serial.print("Error inicializando LoRa. Codigo: ");
     Serial.println(state);
-    Serial.println("Revisar alimentacion, antena, pines SPI, CS, RESET, BUSY y DIO1.");
+    Serial.println("Revisar alimentacion, antena, SPI, CS, RESET, BUSY y DIO1.");
+
     while (true) {
       delay(1000);
     }
