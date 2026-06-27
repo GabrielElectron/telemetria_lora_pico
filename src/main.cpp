@@ -34,6 +34,10 @@ SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY, SPI1);
 #define NODE_ID 0
 #endif
 
+#ifndef DEVICE_NAME
+#define DEVICE_NAME "SIN_NOMBRE"
+#endif
+
 int contador = 0;
 
 unsigned long ultimo_envio_ms = 0;
@@ -94,6 +98,8 @@ void setup() {
   Serial.println("======================================");
   Serial.println("PPS - Telemetria LoRa SX1262");
   Serial.println("Raspberry Pi Pico 2W");
+  Serial.print("Dispositivo: ");
+  Serial.println(DEVICE_NAME);
   Serial.println("======================================");
 
 #ifdef DEVICE_MODE_TX
@@ -152,10 +158,12 @@ void loop() {
       irms = 0.0;
     }
 
+
     float potencia = vrms * irms;
 
     String mensaje = "";
     mensaje += "NODE=" + String(NODE_ID);
+    mensaje += ";NAME=" + String(DEVICE_NAME);
     mensaje += ";SEQ=" + String(contador);
     mensaje += ";VRMS=" + String(vrms, 2);
     mensaje += ";IRMS=" + String(irms, 2);
