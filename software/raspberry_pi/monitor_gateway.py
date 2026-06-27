@@ -1,0 +1,161 @@
+import os
+import serial
+import time
+from datetime import datetime
+
+
+PUERTO = "COM3"
+BAUDRATE = 115200
+
+
+estado_nodos = {}
+ultimo_seq = {}
+paquetes_perdidos = {}
+
+
+def limpiar_pantalla():
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def parsear_linea(linea: str):
+    linea = linea.strip()
+
+    if not linea.startswith("RX;"):
+        return None
+
+    partes = linea.split(";")
+    datos = {"TYPE": partes[0]}
+
+    for parte in partes[1:]:
+        if "=" not in parte:
+            continue
+
+        clave, valor = parte.split("=", 1)
+        datos[clave] = valor
+
+    try:
+        for clave in ["NODE", "SEQ"]:
+            if clave in datos:
+                datos[clave] = int(datos[clave])
+
+        for clave in ["VRMS", "IRMS", "P", "RSSI", "SNR", "FERR"]:
+            if clave in datos:
+                datos[clave] = float(datos[clave])
+
+    except ValueError:
+        return None
+
+    return datos
+
+
+def actualizar_estado(datos):
+    node = datos.get("NODE")
+    seq = datos.get("SEQ")
+
+    if node is None or seq is None:
+        return
+
+    if node not in paquetes_perdidos:
+        paquetes_perdidos[node] = 0
+
+    if node in ultimo_seq:
+        esperado = ultimo_seq[node] + 1
+
+        if seq > esperado:
+            paquetes_perdidos[node] += seq - esperado
+
+    ultimo_seq[node] = seq
+
+    datos["ULTIMA_RECEPCION"] = datetime.now().strftime("%H:%M:%S")
+    datos["PERDIDOS"] = paquetes_perdidos[node]
+
+    estado_nodos[node] = datos
+
+
+def mostrar_estado():
+    limpiar_pantalla()
+
+    print("==============================================")
+    print("PPS - Monitor Gateway LoRa")
+    print("==============================================")
+    print(f"Puerto: {PUERTO} | Baudrate: {BAUDRATE}")
+    print()
+
+    print(
+        f"{'Nodo':<6}"
+        f"{'Nombre':<10}"
+        f"{'SEQ':<8}"
+        f"{'Vrms':<10}"
+        f"{'Irms':<10}"
+        f"{'P':<10}"
+        f"{'RSSI':<10}"
+        f"{'SNR':<8}"
+        f"{'Perdidos':<10}"
+        f"{'Hora':<10}"
+    )
+
+    print("-" * 100)
+
+    for node in sorted(estado_nodos.keys()):
+        d = estado_nodos[node]
+
+        print(
+            f"{d.get('NODE', ''):<6}"
+            f"{d.get('NAME', ''):<10}"
+            f"{d.get('SEQ', ''):<8}"
+            f"{d.get('VRMS', 0):<10.2f}"
+            f"{d.get('IRMS', 0):<10.2f}"
+            f"{d.get('P', 0):<10.2f}"
+            f"{d.get('RSSI', 0):<10.2f}"
+            f"{d.get('SNR', 0):<8.2f}"
+            f"{d.get('PERDIDOS', 0):<10}"
+            f"{d.get('ULTIMA_RECEPCION', ''):<10}"
+        )
+
+    print()
+    print("Ctrl+C para salir.")
+
+
+def main():
+    print("==============================================")
+    print("PPS - Monitor Gateway LoRa")
+    print("==============================================")
+    print(f"Abriendo puerto {PUERTO} a {BAUDRATE} baudios...")
+    print()
+
+    ser = serial.Serial(PUERTO, BAUDRATE, timeout=1)
+    time.sleep(2)
+
+    ultima_actualizacion_pantalla = 0
+
+    while True:
+        try:
+            linea = ser.readline().decode("utf-8", errors="ignore").strip()
+
+            if linea:
+                datos = parsear_linea(linea)
+
+                if datos is not None:
+                    actualizar_estado(datos)
+
+            ahora = time.time()
+
+            if ahora - ultima_actualizacion_pantalla >= 1.0:
+                mostrar_estado()
+                ultima_actualizacion_pantalla = ahora
+
+        except KeyboardInterrupt:
+            print()
+            print("Monitor detenido por el usuario.")
+            break
+
+        except serial.SerialException as e:
+            print("Error de puerto serial:", e)
+            break
+
+        except Exception as e:
+            print("Error:", e)
+
+
+if __name__ == "__main__":
+    main()
