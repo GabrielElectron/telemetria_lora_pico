@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 
-PUERTO = "COM3"
+PUERTO = "/dev/ttyACM0"
 BAUDRATE = 115200
 
 ARCHIVO_CSV = "software/raspberry_pi/datos_lora_app.csv"
