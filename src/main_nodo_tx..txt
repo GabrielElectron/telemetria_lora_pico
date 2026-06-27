@@ -17,14 +17,16 @@
 // Usamos SPI1 porque el modulo esta cableado en GP10, GP11 y GP12
 SX1262 radio = new Module(LORA_CS, LORA_DIO1, LORA_RST, LORA_BUSY, SPI1);
 
+int contador = 0;
+
 void setup() {
   Serial.begin(115200);
   delay(3000);
 
   Serial.println();
   Serial.println("======================================");
-  Serial.println("PPS - Gateway Pico 2W + LoRa SX1262");
-  Serial.println("Modo: RECEPTOR");
+  Serial.println("PPS - Nodo 1 Pico 2W + LoRa SX1262");
+  Serial.println("Modo: TRANSMISOR");
   Serial.println("======================================");
 
   SPI1.setSCK(LORA_SCK);
@@ -65,39 +67,23 @@ void setup() {
       delay(1000);
     }
   }
-
-  Serial.println();
-  Serial.println("Esperando paquetes LoRa...");
 }
 
 void loop() {
-  String mensaje;
+  String mensaje = "Nodo=1; contador=" + String(contador) + "; Irms=3.25; Vrms=220.5; Estado=OK";
 
-  int state = radio.receive(mensaje);
+  Serial.print("Transmitiendo: ");
+  Serial.println(mensaje);
+
+  int state = radio.transmit(mensaje);
 
   if (state == RADIOLIB_ERR_NONE) {
-    Serial.println("--------------------------------------");
-    Serial.print("Paquete recibido: ");
-    Serial.println(mensaje);
-
-    Serial.print("RSSI: ");
-    Serial.print(radio.getRSSI());
-    Serial.println(" dBm");
-
-    Serial.print("SNR: ");
-    Serial.print(radio.getSNR());
-    Serial.println(" dB");
-
-    Serial.print("Frequency error: ");
-    Serial.print(radio.getFrequencyError());
-    Serial.println(" Hz");
-  }
-  else if (state == RADIOLIB_ERR_RX_TIMEOUT) {
-    // No llego ningun paquete. Es normal.
-  }
-  else {
-    Serial.print("Error recibiendo. Codigo: ");
+    Serial.println("Envio OK");
+  } else {
+    Serial.print("Error enviando. Codigo: ");
     Serial.println(state);
-    delay(500);
   }
+
+  contador++;
+  delay(2000);
 }
